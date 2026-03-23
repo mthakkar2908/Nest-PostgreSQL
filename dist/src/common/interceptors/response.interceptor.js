@@ -9,6 +9,7 @@ import { map } from 'rxjs/operators';
 let ResponseInterceptor = class ResponseInterceptor {
     intercept(context, next) {
         const response = context.switchToHttp().getResponse();
+        console.log('Response : ', response);
         return next.handle().pipe(map((data) => ({
             success: true,
             error: false,

@@ -1,33 +1,30 @@
 #!/usr/bin/env sh
-echo '🏗️👷 Styling, testing and building your project before committing'
+set -e
 
-# Check Prettier Standards
-yarn format ||
-(
-    echo '🤢🤮🤢🤮 Your styling looks disgusting. 🤢🤮🤢🤮
-            Prettier Check Failed.';
-    false;
-)
+echo '🏗️👷 Styling, lint and build checks before commit'
 
-echo '😎😎😎... Alright... Code looks good to me... Trying to build now. 😎😎😎'
+# Choose package manager (npm default, yarn if yarn.lock exists)
+if [ -f "yarn.lock" ]; then
+  CMDS="yarn"
+  FORMAT_CMD="yarn format"
+  LINT_CMD="yarn lint"
+  BUILD_CMD="yarn build"
+else
+  CMDS="npm"
+  FORMAT_CMD="npm run format"
+  LINT_CMD="npm run lint"
+  BUILD_CMD="npm run build"
+fi
 
-# Unit Test Case
-# yarn tests ||
-# (
-#     echo '🚀 🚀 😠 Teset Case is failed  😠 🚀 🚀
-#             Next Test: View the errors above to see why. 
-#     '
-#     false;
-# )
+echo "Using package manager: $CMDS"
 
-# Create Local Build
-yarn build ||
-(
-    echo '❌👷🔨❌ Better call Bob... Because your build failed ❌👷🔨❌
-            Next build failed: View the errors above to see why. 
-    '
-    false;
-)
+echo '➡️ Running format'
+$FORMAT_CMD
 
-# If everything passes... Now we can commit
-echo '✅✅✅✅ You win this time... I am committing this now. ✅✅✅✅'
+echo '➡️ Running lint'
+$LINT_CMD
+
+echo '➡️ Running build'
+$BUILD_CMD
+
+echo '✅ All checks passed. Proceed with commit.'

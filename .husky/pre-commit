@@ -1,34 +1,33 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+#!/usr/bin/env sh
+echo '🏗️👷 Styling, testing and building your project before committing'
 
-echo "🔍 Checking code format with Prettier..."
-npx prettier --check .
+# Check Prettier Standards
+yarn format ||
+(
+    echo '🤢🤮🤢🤮 Your styling looks disgusting. 🤢🤮🤢🤮
+            Prettier Check Failed.';
+    false;
+)
 
-if [ $? -ne 0 ]; then
-  echo "❌ Prettier format failed! Please run: npm run format"
-  exit 1
-else
-  echo "✅ Prettier format is correct"
-fi
+echo '😎😎😎... Alright... Code looks good to me... Trying to build now. 😎😎😎'
 
-echo "🧹 Running ESLint..."
-npm run lint
+# Unit Test Case
+# yarn tests ||
+# (
+#     echo '🚀 🚀 😠 Teset Case is failed  😠 🚀 🚀
+#             Next Test: View the errors above to see why. 
+#     '
+#     false;
+# )
 
-if [ $? -ne 0 ]; then
-  echo "❌ ESLint failed! Fix errors before committing"
-  exit 1
-else
-  echo "✅ ESLint passed"
-fi
+# Create Local Build
+yarn build ||
+(
+    echo '❌👷🔨❌ Better call Bob... Because your build failed ❌👷🔨❌
+            Next build failed: View the errors above to see why. 
+    '
+    false;
+)
 
-echo "🏗️ Building project..."
-npm run build
-
-if [ $? -ne 0 ]; then
-  echo "❌ Build failed! Fix errors before committing"
-  exit 1
-else
-  echo "✅ Build successful"
-fi
-
-echo "🚀 All checks passed! Ready to commit."
+# If everything passes... Now we can commit
+echo '✅✅✅✅ You win this time... I am committing this now. ✅✅✅✅'

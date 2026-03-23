@@ -1,0 +1,796 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum AppointmentType {
+  FACE_TO_FACE
+  TELEPHONE
+  VIDEO
+}
+
+enum UrgencyWindow {
+  SAME_DAY
+  NEXT_DAY
+  ROUTINE
+}
+
+enum ClinicianGrade {
+  GP
+  ANP
+  PHARMACIST
+  MH_PRACTITIONER
+  NURSE
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  RESCHEDULED
+  FAILED
+  FALLBACK
+  AWAITING_HUMAN_REVIEW
+}
+
+enum EscalationChannel {
+  CALL_999
+  ATTEND_AE
+  CALL_111
+  DUTY_CLINICIAN
+}
+
+enum PharmacyFirstStatus {
+  ELIGIBLE
+  INELIGIBLE
+  OFFERED
+  ACCEPTED
+  DECLINED
+  REFERRED
+  FALLBACK_TO_GP
+  UNAVAILABLE
+}
+
+enum PharmacyFirstCondition {
+  ACUTE_OTITIS_MEDIA
+  IMPETIGO
+  INFECTED_INSECT_BITES
+  SHINGLES
+  SINUSITIS
+  SORE_THROAT
+  UNCOMPLICATED_UTI
+}
+
+enum CommunicationChannel {
+  SMS
+  EMAIL
+}
+
+enum CommunicationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum CommunicationPurpose {
+  BOOKING_CONFIRMATION
+  REMINDER_48H
+  REMINDER_24H
+  REMINDER_2H
+  CANCELLATION_CONFIRMATION
+  RESCHEDULE_CONFIRMATION
+  PHARMACY_CONFIRMATION
+  PHARMACY_REMINDER
+  RED_FLAG_ESCALATION
+  SAFETY_NET
+}
+
+enum TriageStatus {
+  STARTED
+  COMPLETED
+  ABANDONED
+  ESCALATED
+}
+
+enum SeverityBand {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum IntakeMode {
+  NEW_CONDITION
+  ONGOING_CONDITION
+}
+
+enum AdminRole {
+  PRACTICE_ADMIN
+  CLINICAL_GOVERNANCE_LEAD
+  OPERATIONS_MANAGER
+  READ_ONLY_AUDITOR
+  PCN_ADMIN
+  SUPER_ADMIN
+}
+
+enum GpSystem {
+  EMIS_WEB
+  TPP_SYSTMONE
+}
+
+enum IM1TransactionStatus {
+  SUCCESS
+  FAILED
+  RETRYING
+  QUEUED
+}
+
+enum FallbackReason {
+  NO_SLOTS_AVAILABLE
+  EXCLUSION_CRITERIA
+  PATIENT_DECLINED
+  CAPACITY_EXCEEDED
+  INTEGRATION_UNAVAILABLE
+  RULE_MISMATCH
+}
+
+enum ConsentType {
+  DATA_PROCESSING
+  AI_ASSISTANCE
+  PHARMACY_FIRST_DATA_SHARING
+  COMMUNICATIONS
+}
+
+enum RedFlagTrigger {
+  SEVERE_CHEST_PAIN
+  SUDDEN_SHORTNESS_OF_BREATH
+  STROKE_SYMPTOMS
+  HEAVY_UNCONTROLLED_BLEEDING
+  LOSS_OF_CONSCIOUSNESS
+  SUDDEN_SEVERE_HEADACHE
+  VOMITING_BLOOD_BLACK_STOOLS
+  SEVERE_ABDOMINAL_PAIN_FEVER
+  SEVERE_ALLERGIC_REACTION
+  SUDDEN_VISION_LOSS
+  SEVERE_MENTAL_HEALTH_CRISIS
+  SUICIDAL_INTENT
+  CUSTOM
+}
+
+enum ConditionCategory {
+  SORE_THROAT_COUGH_FLU
+  UTI_CYSTITIS
+  WOMENS_HEALTH
+  SKIN_CONDITIONS
+  RED_EYE_CONJUNCTIVITIS
+  MENTAL_HEALTH
+  JOINT_MUSCLE_PAIN
+  PHARMACY_FIRST
+  ONGOING_CONDITION
+  OTHER
+}
+
+enum WriteBackStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum PartnerBookingModel {
+  API
+  SLOT_FEED
+  PORTAL_DISPATCH
+}
+
+// =============================================================================
+// MODULE: MULTI-TENANT CORE
+// =============================================================================
+
+model Tenant {
+  id                    String   @id @default(uuid())
+  name                  String
+  type                  String   // "PRACTICE" | "PCN" | "ICS"
+  odsCode               String?  @unique // NHS ODS code
+  addressLine1          String?
+  addressLine2          String?
+  city                  String?
+  postcode              String?
+  isActive              Boolean  @default(true)
+  aiSummarisationEnabled Boolean @default(true)
+  humanReviewRequired   Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  sites                 Site[]
+  clinicians            Clinician[]
+  adminUsers            AdminUser[]
+  bookingRules          BookingRule[]
+  pharmacyPartners      PharmacyPartner[]
+  triageSessions        TriageSession[]
+  appointments          Appointment[]
+  conditionPathways     ConditionPathway[]
+  communicationTemplates CommunicationTemplate[]
+  auditLogs             AuditLog[]
+  im1Credentials        IM1Credential[]
+  consentRecords        ConsentRecord[]
+  redFlagConfigs        RedFlagConfig[]
+  pharmacyFirstConfigs  PharmacyFirstConfig[]
+  reminderConfigs       ReminderConfig[]
+  analyticsEvents       AnalyticsEvent[]
+  photoUploads          PhotoUpload[]
+  writeBackLogs         WriteBackLog[]
+  bookingRuleVersions   BookingRuleVersion[]
+  tenantConfigChanges   TenantConfigChange[]
+}
+  
+model Site {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  siteCode    String   // IM1 site code
+  addressLine1 String?
+  addressLine2 String?
+  city        String?
+  postcode    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  clinicians  Clinician[]
+  appointments Appointment[]
+  bookingRules BookingRule[]
+}
+
+// =============================================================================
+// MODULE 7: ADMIN USERS & RBAC
+// =============================================================================
+
+model AdminUser {
+  id           String     @id @default(uuid())
+  tenantId     String
+  email        String     @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         AdminRole
+  isActive     Boolean    @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  configChanges TenantConfigChange[]
+  auditLogs    AuditLog[]
+}
+
+// =============================================================================
+// MODULE 1: PATIENT SESSIONS & IDENTITY VERIFICATION
+// =============================================================================
+
+model PatientSession {
+  id                  String        @id @default(uuid())
+  tenantId            String
+  // Pseudonymous — no real PII stored
+  sessionToken        String        @unique
+  dobHash             String        // hashed DOB for verification
+  postcodeHash        String        // hashed postcode
+  ageRangeBand        String?       // e.g. "16-64" — for pathway logic only
+  otpVerified         Boolean       @default(false)
+  otpVerifiedAt       DateTime?
+  identityMode        String        // "NHS_LOGIN" | "GUEST_VERIFICATION"
+  isActive            Boolean       @default(true)
+  expiresAt           DateTime
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  consentRecords      ConsentRecord[]
+  triageSession       TriageSession?
+}
+
+model ConsentRecord {
+  id              String      @id @default(uuid())
+  tenantId        String
+  sessionId       String
+  consentType     ConsentType
+  granted         Boolean
+  consentText     String      // exact text shown to patient at time of consent
+  ipAddress       String?
+  userAgent       String?
+  grantedAt       DateTime    @default(now())
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id])
+  patientSession  PatientSession @relation(fields: [sessionId], references: [id])
+}
+
+// =============================================================================
+// MODULE 2: RED FLAG SAFETY ENGINE
+// =============================================================================
+
+model RedFlagConfig {
+  id          String         @id @default(uuid())
+  tenantId    String
+  trigger     RedFlagTrigger
+  label       String         // display label
+  description String?
+  isActive    Boolean        @default(true)
+  isCustom    Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  redFlagEvents RedFlagEvent[]
+}
+
+model RedFlagEvent {
+  id                  String            @id @default(uuid())
+  tenantId            String
+  sessionId           String?
+  triggeredFlags      RedFlagTrigger[]
+  redFlagConfigId     String?
+  escalationChannel   EscalationChannel
+  escalationShownAt   DateTime          @default(now())
+  bookingTerminated   Boolean           @default(true)
+  staffReviewRequested Boolean          @default(false)
+  channel             String            @default("WEB")
+
+  redFlagConfig       RedFlagConfig?    @relation(fields: [redFlagConfigId], references: [id])
+}
+
+// =============================================================================
+// MODULE 3: TRIAGE SESSION & STRUCTURED INTAKE
+// =============================================================================
+
+model TriageSession {
+  id                    String          @id @default(uuid())
+  tenantId              String
+  sessionId             String          @unique
+  status                TriageStatus
+  intakeMode            IntakeMode?
+  conditionCategory     ConditionCategory?
+  severityBand          SeverityBand?
+  onsetDuration         String?         // e.g. "<48hours", "3-7days"
+  selfCareTried         Boolean?
+  lastClinicianSeen     String?         // for ongoing conditions
+  isFlareUp             Boolean?
+  preferredClinicianId  String?
+  preferredSiteId       String?
+  pharmacyFirstCandidate Boolean        @default(false)
+  pharmacyFirstStatus   PharmacyFirstStatus?
+  redFlagScreeningPassed Boolean        @default(false)
+  aiSummaryGenerated    Boolean         @default(false)
+  aiSummaryText         String?         // pseudonymous, audit logged
+  structuredNoteText    String?         // final note for write-back
+  pathwayKey            String?         // maps to booking rule
+  startedAt             DateTime        @default(now())
+  completedAt           DateTime?
+  abandonedAt           DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  tenant                Tenant          @relation(fields: [tenantId], references: [id])
+  patientSession        PatientSession  @relation(fields: [sessionId], references: [id])
+  intakeAnswers         IntakeAnswer[]
+  appointment           Appointment?
+  pharmacyReferral      PharmacyReferral?
+  photoUploads          PhotoUpload[]
+  aiProcessingLogs      AIProcessingLog[]
+  writeBackLog          WriteBackLog?
+}
+
+model ConditionPathway {
+  id              String            @id @default(uuid())
+  tenantId        String
+  category        ConditionCategory
+  label           String
+  description     String?
+  isActive        Boolean           @default(true)
+  version         Int               @default(1)
+  configJson      Json              // full question tree config
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  questions       IntakeQuestion[]
+}
+
+model IntakeQuestion {
+  id              String   @id @default(uuid())
+  pathwayId       String
+  questionText    String
+  answerType      String   // "SINGLE_SELECT" | "MULTI_SELECT" | "BOOLEAN" | "NUMERIC" | "FREE_TEXT"
+  options         Json?    // array of pre-defined answer options
+  validationRules Json?
+  redFlagMappings Json?    // which answers trigger red flags
+  bookingRuleKey  String?
+  pharmacyFirstEligibilityMapping Json?
+  orderIndex      Int
+  isRequired      Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  pathway         ConditionPathway @relation(fields: [pathwayId], references: [id])
+  answers         IntakeAnswer[]
+}
+
+model IntakeAnswer {
+  id              String   @id @default(uuid())
+  triageSessionId String
+  questionId      String
+  answerValue     String?  // structured answer
+  freeTextProvided Boolean @default(false)
+  // raw free text NOT stored if structured mapping succeeds
+  answeredAt      DateTime @default(now())
+
+  triageSession   TriageSession   @relation(fields: [triageSessionId], references: [id])
+  question        IntakeQuestion  @relation(fields: [questionId], references: [id])
+}
+
+model PhotoUpload {
+  id              String   @id @default(uuid())
+  tenantId        String
+  triageSessionId String
+  s3Key           String   // encrypted S3 object key
+  s3Bucket        String
+  mimeType        String
+  fileSizeBytes   Int
+  virusScanPassed Boolean  @default(false)
+  retentionPolicy String?
+  uploadedAt      DateTime @default(now())
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  triageSession   TriageSession @relation(fields: [triageSessionId], references: [id])
+}
+
+// =============================================================================
+// MODULE 4: BOOKING ENGINE & RULES
+// =============================================================================
+
+model Clinician {
+  id              String         @id @default(uuid())
+  tenantId        String
+  siteId          String?
+  firstName       String
+  lastName        String
+  grade           ClinicianGrade
+  im1ClinicianCode String?       // IM1 slot code mapping
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  site            Site?          @relation(fields: [siteId], references: [id])
+  appointments    Appointment[]
+  bookingRules    BookingRule[]
+}
+
+model BookingRule {
+  id                      String         @id @default(uuid())
+  tenantId                String
+  siteId                  String?
+  conditionCategoryKey    String         // maps to ConditionCategory
+  severityBand            SeverityBand?
+  urgencyWindow           UrgencyWindow
+  preferredClinicianGrade ClinicianGrade
+  clinicianId             String?        // optional named clinician
+  appointmentType         AppointmentType
+  bookingWindowDaysMin    Int            @default(0)
+  bookingWindowDaysMax    Int            @default(14)
+  maxDailyCapacity        Int?
+  exclusionCriteria       Json?          // pregnancy, age limits, comorbidities
+  fallbackRules           Json?
+  humanValidationRequired Boolean        @default(false)
+  isActive                Boolean        @default(true)
+  version                 Int            @default(1)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  tenant                  Tenant         @relation(fields: [tenantId], references: [id])
+  site                    Site?          @relation(fields: [siteId], references: [id])
+  clinician               Clinician?     @relation(fields: [clinicianId], references: [id])
+  appointments            Appointment[]
+  ruleVersions            BookingRuleVersion[]
+}
+
+model BookingRuleVersion {
+  id            String   @id @default(uuid())
+  tenantId      String
+  ruleId        String
+  version       Int
+  snapshotJson  Json     // full rule snapshot at this version
+  changedBy     String   // admin user id
+  changeNote    String?
+  createdAt     DateTime @default(now())
+
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  rule          BookingRule @relation(fields: [ruleId], references: [id])
+}
+
+model Appointment {
+  id                  String          @id @default(uuid())
+  tenantId            String
+  siteId              String?
+  triageSessionId     String?         @unique
+  clinicianId         String?
+  bookingRuleId       String?
+  im1BookingId        String?         @unique // confirmation ID from EMIS/TPP
+  gpSystem            GpSystem?
+  status              BookingStatus
+  appointmentType     AppointmentType
+  urgencyWindow       UrgencyWindow
+  scheduledAt         DateTime?
+  bookedAt            DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  rescheduledFromId   String?         // self-reference for rescheduling
+  fallbackReason      FallbackReason?
+  humanReviewRequired Boolean         @default(false)
+  humanReviewedAt     DateTime?
+  humanReviewedBy     String?
+  confirmationSent    Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  tenant              Tenant          @relation(fields: [tenantId], references: [id])
+  site                Site?           @relation(fields: [siteId], references: [id])
+  triageSession       TriageSession?  @relation(fields: [triageSessionId], references: [id])
+  clinician           Clinician?      @relation(fields: [clinicianId], references: [id])
+  bookingRule         BookingRule?    @relation(fields: [bookingRuleId], references: [id])
+  communications      Communication[]
+  im1Transactions     IM1Transaction[]
+}
+
+// =============================================================================
+// MODULE 5: PHARMACY FIRST
+// =============================================================================
+
+model PharmacyFirstConfig {
+  id              String                 @id @default(uuid())
+  tenantId        String
+  condition       PharmacyFirstCondition
+  isEnabled       Boolean                @default(true)
+  ageMin          Int?
+  ageMax          Int?
+  exclusionRules  Json?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+}
+
+model PharmacyPartner {
+  id                  String              @id @default(uuid())
+  tenantId            String
+  name                String
+  registrationNumber  String?
+  bookingModel        PartnerBookingModel
+  apiEndpoint         String?
+  apiKeyRef           String?             // reference to AWS Secrets Manager key
+  coveragePostcodes   String[]
+  isActive            Boolean             @default(true)
+  annualFeeStatus     String?             // "PAID" | "PENDING" | "OVERDUE"
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id])
+  pharmacyReferrals   PharmacyReferral[]
+}
+
+model PharmacyReferral {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  triageSessionId       String                 @unique
+  pharmacyPartnerId     String
+  condition             PharmacyFirstCondition
+  status                PharmacyFirstStatus
+  consentToken          String                 // links to ConsentRecord
+  referralPayloadJson   Json                   // minimal anonymised payload sent
+  partnerBookingRef     String?
+  scheduledAt           DateTime?
+  fallbackReason        FallbackReason?
+  fallbackToGpAt        DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  triageSession         TriageSession          @relation(fields: [triageSessionId], references: [id])
+  pharmacyPartner       PharmacyPartner        @relation(fields: [pharmacyPartnerId], references: [id])
+  communications        Communication[]
+}
+
+// =============================================================================
+// MODULE 6: IM1 INTEGRATION & CLINICAL WRITE-BACK
+// =============================================================================
+
+model IM1Credential {
+  id              String    @id @default(uuid())
+  tenantId        String    @unique
+  gpSystem        GpSystem
+  im1Provider     String    @default("BLACK_PEAR")
+  secretRef       String    // AWS Secrets Manager reference
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+}
+
+model IM1Transaction {
+  id                String               @id @default(uuid())
+  tenantId          String
+  appointmentId     String?
+  transactionType   String               // "SLOT_QUERY" | "BOOKING" | "CANCELLATION" | "WRITE_BACK"
+  status            IM1TransactionStatus
+  requestPayload    Json?                // what was sent (no PII)
+  responsePayload   Json?                // what came back
+  im1BookingId      String?
+  retryCount        Int                  @default(0)
+  errorMessage      String?
+  executedAt        DateTime             @default(now())
+
+  appointment       Appointment?         @relation(fields: [appointmentId], references: [id])
+}
+
+model WriteBackLog {
+  id                    String          @id @default(uuid())
+  tenantId              String
+  triageSessionId       String          @unique
+  gpSystem              GpSystem
+  status                WriteBackStatus
+  writeBackTemplateVersion String?
+  presentingComplaint   String?
+  symptomChecklist      Json?
+  durationBand          String?
+  severityBand          SeverityBand?
+  redFlagResult         Boolean?
+  pharmacyFirstOffered  Boolean?
+  pharmacyFirstAccepted Boolean?
+  bookingOutcome        String?
+  safetyNetDelivered    Boolean?
+  consentConfirmed      Boolean?
+  sourceTag             String          @default("Toni Assist Auto-Agent")
+  errorMessage          String?
+  writtenAt             DateTime?
+  createdAt             DateTime        @default(now())
+
+  tenant                Tenant          @relation(fields: [tenantId], references: [id])
+  triageSession         TriageSession   @relation(fields: [triageSessionId], references: [id])
+}
+
+// =============================================================================
+// MODULE 11: COMMUNICATIONS
+// =============================================================================
+
+model CommunicationTemplate {
+  id              String               @id @default(uuid())
+  tenantId        String
+  purpose         CommunicationPurpose
+  channel         CommunicationChannel
+  templateBody    String               // supports placeholder variables
+  version         Int                  @default(1)
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id])
+  communications  Communication[]
+}
+
+model ReminderConfig {
+  id                    String   @id @default(uuid())
+  tenantId              String   @unique
+  reminder48hEnabled    Boolean  @default(true)
+  reminder24hEnabled    Boolean  @default(true)
+  reminder2hEnabled     Boolean  @default(false)
+  cancellationCutoffHours Int    @default(2)
+  rescheduleEnabled     Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model Communication {
+  id                  String               @id @default(uuid())
+  tenantId            String
+  appointmentId       String?
+  pharmacyReferralId  String?
+  templateId          String?
+  channel             CommunicationChannel
+  purpose             CommunicationPurpose
+  status              CommunicationStatus
+  // No PII or symptom data — booking reference only
+  bookingReference    String?
+  awsMessageId        String?              // SNS/SES message ID
+  scheduledAt         DateTime?
+  sentAt              DateTime?
+  deliveredAt         DateTime?
+  failureReason       String?
+  retryCount          Int                  @default(0)
+  createdAt           DateTime             @default(now())
+
+  appointment         Appointment?         @relation(fields: [appointmentId], references: [id])
+  pharmacyReferral    PharmacyReferral?    @relation(fields: [pharmacyReferralId], references: [id])
+  template            CommunicationTemplate? @relation(fields: [templateId], references: [id])
+}
+
+// =============================================================================
+// MODULE 9: AI PROCESSING LOGS (Pseudonymous, Audit Only)
+// =============================================================================
+
+model AIProcessingLog {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  triageSessionId     String
+  // Only anonymised payload — NO identifiers ever stored
+  anonymisedInput     String   // symptom-only payload sent to OpenAI
+  structuredOutput    Json?    // extracted structured fields
+  confidenceValid     Boolean?
+  fallbackTriggered   Boolean  @default(false)
+  openAiModel         String?
+  processingMs        Int?
+  createdAt           DateTime @default(now())
+
+  triageSession       TriageSession @relation(fields: [triageSessionId], references: [id])
+}
+
+// =============================================================================
+// MODULE 8: ANALYTICS EVENTS (Immutable Event Store)
+// =============================================================================
+
+model AnalyticsEvent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  eventType   String   // matches Inngest event names e.g. "triage.started"
+  sessionRef  String?  // pseudonymous session reference
+  metadata    Json?    // non-PII operational metadata
+  occurredAt  DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+// =============================================================================
+// MODULE 7: AUDIT LOG (Immutable)
+// =============================================================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  adminUserId String?
+  action      String   // e.g. "BOOKING_RULE_UPDATED", "AI_TOGGLE_CHANGED"
+  entityType  String?  // e.g. "BookingRule", "Tenant"
+  entityId    String?
+  beforeJson  Json?    // state before change
+  afterJson   Json?    // state after change
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id])
+}
+
+model TenantConfigChange {
+  id            String    @id @default(uuid())
+  tenantId      String
+  adminUserId   String
+  configArea    String    // e.g. "BOOKING_RULES", "AI_SETTINGS", "REMINDERS"
+  changeNote    String?
+  version       Int
+  snapshotJson  Json
+  isRolledBack  Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  adminUser     AdminUser @relation(fields: [adminUserId], references: [id])
+}
